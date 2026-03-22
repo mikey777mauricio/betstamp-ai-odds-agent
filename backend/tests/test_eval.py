@@ -93,62 +93,20 @@ class TestToolCoverage:
         assert scores["tool_coverage"] == 1.0
 
 
-# ── Anomaly Recall ────────────────────────────────────────────────────────────
-
-BRIEFING_WITH_ALL_ANOMALIES = """
-PointsBet has a stale line on the Lakers vs Celtics game.
-BetRivers data on Mavericks at Suns is outdated.
-Caesars on the Hawks vs Hornets game is lagging.
-BetMGM moneyline on the Bucks at Nuggets is an outlier.
-Caesars total on Trail Blazers at Jazz deviates significantly.
-"""
-
-BRIEFING_WITH_SOME_ANOMALIES = """
-PointsBet has stale odds on the Lakers game.
-BetMGM has an outlier moneyline on the Bucks at Nuggets.
-"""
-
-BRIEFING_NO_ANOMALIES = """
-All sportsbooks appear to be in consensus today.
-No significant deviations were detected.
-"""
-
-
-class TestAnomalyRecall:
-    def test_all_anomalies_mentioned(self, evaluator):
-        scores = evaluator.evaluate(BRIEFING_WITH_ALL_ANOMALIES, [])
-        assert scores["anomaly_recall"] == 1.0
-
-    def test_some_anomalies_mentioned(self, evaluator):
-        scores = evaluator.evaluate(BRIEFING_WITH_SOME_ANOMALIES, [])
-        # 2 out of 5
-        assert scores["anomaly_recall"] == pytest.approx(0.4)
-
-    def test_no_anomalies_mentioned(self, evaluator):
-        scores = evaluator.evaluate(BRIEFING_NO_ANOMALIES, [])
-        assert scores["anomaly_recall"] == 0.0
-
-    def test_empty_text(self, evaluator):
-        scores = evaluator.evaluate("", [])
-        assert scores["anomaly_recall"] == 0.0
-
-
 # ── Composite Score ───────────────────────────────────────────────────────────
 
 class TestCompositeScore:
     def test_composite_is_weighted_average(self, evaluator):
         scores = evaluator.evaluate(FULL_BRIEFING, ALL_TOOLS_CALLS)
         expected = (
-            scores["completeness"] * 0.30
-            + scores["tool_coverage"] * 0.30
-            + scores["anomaly_recall"] * 0.40
+            scores["completeness"] * 0.50
+            + scores["tool_coverage"] * 0.50
         )
         assert scores["composite_score"] == pytest.approx(expected, abs=0.001)
 
     def test_perfect_briefing_composite_near_1(self, evaluator):
-        """A briefing with all sections, all tools, all anomalies."""
-        text = FULL_BRIEFING + "\n" + BRIEFING_WITH_ALL_ANOMALIES
-        scores = evaluator.evaluate(text, ALL_TOOLS_CALLS)
+        """A briefing with all sections and all tools."""
+        scores = evaluator.evaluate(FULL_BRIEFING, ALL_TOOLS_CALLS)
         assert scores["composite_score"] >= 0.8
 
     def test_empty_everything_scores_0(self, evaluator):
@@ -187,10 +145,6 @@ class TestStructuredEvaluation:
         partial = {"overview": {}, "stale_lines": [{"x": 1}], "narrative": "hi"}
         scores = evaluator.evaluate("test", [], structured_data=partial)
         assert 0 < scores["structured_completeness"] < 1.0
-
-    def test_structured_anomaly_recall(self, evaluator):
-        scores = evaluator.evaluate("", [], structured_data=STRUCTURED_BRIEFING_DATA)
-        assert scores["anomaly_recall"] == 1.0  # All 5 seeded anomalies in structured data
 
     def test_structured_composite_includes_structured_score(self, evaluator):
         scores = evaluator.evaluate("", ALL_TOOLS_CALLS, structured_data=STRUCTURED_BRIEFING_DATA)
@@ -266,7 +220,6 @@ class TestConsistency:
         scores = evaluator.evaluate(
             text, [], structured_data=STRUCTURED_DATA_FOR_CONSISTENCY
         )
-        # Presence check should catch the contradiction
         assert scores["consistency"] < 0.8
 
     def test_correct_counts_rewarded(self, evaluator):
@@ -283,7 +236,6 @@ class TestConsistency:
         scores = evaluator.evaluate(
             text, [], structured_data=STRUCTURED_DATA_FOR_CONSISTENCY
         )
-        # 7 stale (actual 3) and 0 outlier (actual 2) should hurt
         assert scores["consistency"] < 0.7
 
     def test_consistency_in_composite(self, evaluator):
@@ -292,12 +244,10 @@ class TestConsistency:
             CONSISTENT_NARRATIVE, ALL_TOOLS_CALLS,
             structured_data=STRUCTURED_DATA_FOR_CONSISTENCY,
         )
-        # Verify composite uses consistency weight
         expected = (
-            scores["completeness"] * 0.15
-            + scores["tool_coverage"] * 0.15
-            + scores["anomaly_recall"] * 0.25
-            + scores["structured_completeness"] * 0.20
-            + scores["consistency"] * 0.25
+            scores["completeness"] * 0.20
+            + scores["tool_coverage"] * 0.20
+            + scores["structured_completeness"] * 0.30
+            + scores["consistency"] * 0.30
         )
         assert scores["composite_score"] == pytest.approx(expected, abs=0.001)

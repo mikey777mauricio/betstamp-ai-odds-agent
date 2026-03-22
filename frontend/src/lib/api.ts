@@ -147,7 +147,6 @@ export interface EvaluationResult {
   scores: {
     completeness: number;
     tool_coverage: number;
-    anomaly_recall: number;
     structured_completeness?: number;
     consistency?: number;
     composite_score: number;

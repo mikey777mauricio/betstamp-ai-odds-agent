@@ -703,7 +703,6 @@ function HowItWorks() {
 const SCORE_LABELS: Record<string, { label: string; description: string }> = {
   completeness: { label: "Completeness", description: "Required briefing sections present" },
   tool_coverage: { label: "Tool Coverage", description: "Required tool categories called" },
-  anomaly_recall: { label: "Anomaly Recall", description: "Known anomalies detected" },
   structured_completeness: { label: "Structured Data", description: "Structured data sections populated" },
   consistency: { label: "Consistency", description: "Narrative agrees with structured data" },
   composite_score: { label: "Composite", description: "Weighted overall quality score" },
