@@ -58,7 +58,7 @@ export async function sendChatSync(
   return res.json();
 }
 
-export async function uploadData(data: unknown): Promise<{ message: string }> {
+export async function uploadData(data: unknown): Promise<{ message: string; games: number; sportsbooks: string[] }> {
   const res = await fetchWithTimeout(`${API_BASE}/api/data/upload`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -69,6 +69,16 @@ export async function uploadData(data: unknown): Promise<{ message: string }> {
 
 export async function resetData(): Promise<{ message: string }> {
   const res = await fetchWithTimeout(`${API_BASE}/api/data/reset`, { method: "POST" });
+  return res.json();
+}
+
+export async function loadAltData(): Promise<{ message: string; games: number; sportsbooks: string[] }> {
+  const res = await fetchWithTimeout(`${API_BASE}/api/data/load-alt`, { method: "POST" });
+  return res.json();
+}
+
+export async function getDataGames(): Promise<{ games: { game_id: string; sport: string; home_team: string; away_team: string }[]; count: number }> {
+  const res = await fetchWithTimeout(`${API_BASE}/api/data/games`, {}, 10000);
   return res.json();
 }
 

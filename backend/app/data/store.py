@@ -13,6 +13,7 @@ from typing import Optional
 
 _DATA_DIR = Path(__file__).parent
 _SAMPLE_FILE = _DATA_DIR / "sample_odds_data.json"
+_ALT_SAMPLE_FILE = _DATA_DIR / "sample_odds_data_alt.json"
 
 
 class OddsStore:
@@ -43,6 +44,18 @@ class OddsStore:
                 "notes": data.get("notes", []),
             }
             self._odds = data.get("odds", [])
+
+    def load_alt_sample(self):
+        """Load the alternative sample dataset."""
+        with self._lock:
+            with open(_ALT_SAMPLE_FILE) as f:
+                raw = json.load(f)
+            self._metadata = {
+                "description": raw.get("description", ""),
+                "generated": raw.get("generated", ""),
+                "notes": raw.get("notes", []),
+            }
+            self._odds = raw.get("odds", [])
 
     def reset(self):
         """Reset to sample data."""

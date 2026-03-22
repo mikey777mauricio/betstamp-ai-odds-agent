@@ -50,6 +50,28 @@ async def reset_data():
     }
 
 
+@router.post("/load-alt")
+async def load_alt_data():
+    """Load the alternative sample dataset (March 22 slate)."""
+    odds_store.load_alt_sample()
+    return {
+        "message": f"Loaded alternative dataset",
+        "games": len(odds_store.get_games()),
+        "sportsbooks": odds_store.get_sportsbooks(),
+    }
+
+
+@router.get("/datasets")
+async def list_datasets():
+    """List available built-in datasets."""
+    return {
+        "datasets": [
+            {"id": "sample", "name": "March 20 Slate", "games": 10, "sportsbooks": 8, "records": 80},
+            {"id": "alt", "name": "March 22 Slate", "games": 5, "sportsbooks": 6, "records": 30},
+        ]
+    }
+
+
 @router.get("/games")
 async def list_games():
     """List all games in the current dataset."""

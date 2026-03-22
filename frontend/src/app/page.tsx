@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import { triggerBriefing, getBriefingStatus, healthCheck, streamBriefingProgress, evaluateBriefing, BriefingResult, ToolCall, EvaluationResult } from "@/lib/api";
+import { triggerBriefing, getBriefingStatus, healthCheck, streamBriefingProgress, evaluateBriefing, uploadData, resetData, loadAltData, getDataGames, BriefingResult, ToolCall, EvaluationResult } from "@/lib/api";
 import { TOOL_LABELS, getToolStage } from "@/lib/tools";
 import BriefingDisplay from "@/components/BriefingDisplay";
 import ChatInterface from "@/components/ChatInterface";
@@ -42,6 +42,17 @@ export default function Home() {
   const [evalLoading, setEvalLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+
+  // Dataset management
+  type DatasetSource = "sample" | "alt" | "upload";
+  interface DatasetEntry { name: string; source: DatasetSource; data: unknown | null; gameCount: number }
+  const [datasets, setDatasets] = useState<DatasetEntry[]>([
+    { name: "March 20 Slate (10 games, 8 books)", source: "sample", data: null, gameCount: 10 },
+    { name: "March 22 Slate (5 games, 6 books)", source: "alt", data: null, gameCount: 5 },
+  ]);
+  const [activeDataset, setActiveDataset] = useState(0);
+  const [datasetLoading, setDatasetLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     healthCheck()
@@ -145,6 +156,63 @@ export default function Home() {
     };
   }, []);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // Support both formats: {odds: [...]} or raw array
+      const payload = Array.isArray(parsed) ? { description: file.name, odds: parsed } : parsed;
+      if (!payload.odds || !Array.isArray(payload.odds)) {
+        setError("Invalid JSON: expected { \"odds\": [...] } or an array of odds records");
+        return;
+      }
+      setDatasetLoading(true);
+      const result = await uploadData(payload);
+      const newEntry: DatasetEntry = {
+        name: `${file.name} (${result.games} games)`,
+        source: "upload",
+        data: payload,
+        gameCount: result.games,
+      };
+      setDatasets(prev => [...prev, newEntry]);
+      setActiveDataset(datasets.length);
+      setError(null);
+      setBriefing(null);
+      setStatus("idle");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to upload file");
+    } finally {
+      setDatasetLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDatasetSwitch = async (index: number) => {
+    if (index === activeDataset) return;
+    setDatasetLoading(true);
+    try {
+      const ds = datasets[index];
+      if (ds.source === "sample") {
+        await resetData();
+      } else if (ds.source === "alt") {
+        await loadAltData();
+      } else {
+        await uploadData(ds.data);
+      }
+      setActiveDataset(index);
+      setBriefing(null);
+      setEvaluation(null);
+      setStatus("idle");
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to switch dataset");
+    } finally {
+      setDatasetLoading(false);
+    }
+  };
+
   // Derive current stage from latest tool call
   const currentStage = liveTools.length > 0 ? liveTools[liveTools.length - 1].stage : "Initializing";
 
@@ -208,14 +276,53 @@ export default function Home() {
                 Daily Market Briefing
               </h2>
               <p className="text-text-secondary text-sm mb-2">
-                AI-powered analysis of 10 games across 8 sportsbooks.
+                AI-powered analysis across multiple sportsbooks.
               </p>
-              <p className="text-text-muted text-xs mb-8">
+              <p className="text-text-muted text-xs mb-6">
                 Detects anomalies, finds arbitrage, and ranks sportsbooks — all with deterministic, tested tools.
               </p>
+
+              {/* Dataset selector */}
+              <div className="w-full mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative">
+                    <select
+                      value={activeDataset}
+                      onChange={(e) => handleDatasetSwitch(Number(e.target.value))}
+                      disabled={datasetLoading}
+                      className="w-full appearance-none text-sm border border-border rounded-lg px-3 py-2 pr-8 bg-surface-secondary text-text-primary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:opacity-50"
+                    >
+                      {datasets.map((ds, i) => (
+                        <option key={i} value={i}>{ds.name}</option>
+                      ))}
+                    </select>
+                    <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={datasetLoading}
+                    className="px-3 py-2 text-xs font-medium border border-border rounded-lg hover:bg-surface-secondary text-text-secondary transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {datasetLoading ? "Loading..." : "Upload JSON"}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </div>
+                <p className="text-[10px] text-text-muted mt-1.5 text-left">
+                  Upload your own odds data or use the built-in sample dataset
+                </p>
+              </div>
+
               <button
                 onClick={handleTrigger}
-                disabled={apiReady === false}
+                disabled={apiReady === false || datasetLoading}
                 className="px-8 py-3 bg-accent text-white rounded-xl font-semibold hover:bg-accent-dark hover:shadow-md disabled:opacity-40 disabled:cursor-not-allowed transition-all text-sm shadow-sm active:scale-[0.98]"
               >
                 Generate Briefing
