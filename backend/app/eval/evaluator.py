@@ -43,16 +43,49 @@ REQUIRED_TOOL_CATEGORIES = {
     ],
 }
 
-# Known seeded anomalies in the sample data
-KNOWN_ANOMALIES = [
-    # Stale lines
+# Known seeded anomalies per dataset.
+# Keys match the dataset loaded in the store; we detect which is active by checking game IDs.
+_ANOMALIES_MARCH_20 = [
     {"sportsbook": "PointsBet", "game_teams": ("LAL", "BOS"), "type": "stale"},
     {"sportsbook": "BetRivers", "game_teams": ("DAL", "PHX"), "type": "stale"},
     {"sportsbook": "Caesars", "game_teams": ("ATL", "CHA"), "type": "stale"},
-    # Outliers
     {"sportsbook": "BetMGM", "game_teams": ("MIL", "DEN"), "type": "outlier"},
     {"sportsbook": "Caesars", "game_teams": ("POR", "UTA"), "type": "outlier"},
 ]
+
+_ANOMALIES_MARCH_22 = [
+    {"sportsbook": "PointsBet", "game_teams": ("ORL", "NOP"), "type": "stale"},
+    {"sportsbook": "PointsBet", "game_teams": ("BKN", "LAC"), "type": "stale"},
+    {"sportsbook": "PointsBet", "game_teams": ("HOU", "WAS"), "type": "outlier"},
+]
+
+
+def _get_known_anomalies(structured_data: dict | None = None) -> list[dict]:
+    """Return the correct anomaly list based on which dataset is active."""
+    if structured_data:
+        # Check game IDs in the structured data to detect which dataset
+        all_game_ids = set()
+        for section in ["stale_lines", "outlier_odds", "arbitrage", "value_plays"]:
+            for item in structured_data.get(section, []):
+                gid = item.get("game_id", "") if isinstance(item, dict) else getattr(item, "game_id", "")
+                if gid:
+                    all_game_ids.add(gid.lower())
+
+        if any("20260322" in gid for gid in all_game_ids):
+            return _ANOMALIES_MARCH_22
+        return _ANOMALIES_MARCH_20
+
+    # Fallback: check the store directly
+    from app.data.store import odds_store
+    games = odds_store.get_games()
+    game_ids = {g["game_id"] for g in games}
+    if any("20260322" in gid for gid in game_ids):
+        return _ANOMALIES_MARCH_22
+    return _ANOMALIES_MARCH_20
+
+
+# Legacy alias for imports
+KNOWN_ANOMALIES = _ANOMALIES_MARCH_20
 
 
 
@@ -140,8 +173,10 @@ class BriefingEvaluator:
 
         Checks structured data first (more reliable), falls back to text matching.
         """
+        known = _get_known_anomalies(structured_data)
+
         if structured_data:
-            return self._score_anomaly_recall_structured(structured_data)
+            return self._score_anomaly_recall_structured(structured_data, known)
 
         if not text:
             return 0.0
@@ -149,7 +184,7 @@ class BriefingEvaluator:
         lower = text.lower()
         found = 0
 
-        for anomaly in KNOWN_ANOMALIES:
+        for anomaly in known:
             book = anomaly["sportsbook"].lower()
             teams = anomaly["game_teams"]
 
@@ -164,10 +199,13 @@ class BriefingEvaluator:
             if book_mentioned and any_team_mentioned:
                 found += 1
 
-        return found / len(KNOWN_ANOMALIES)
+        return found / len(known) if known else 1.0
 
-    def _score_anomaly_recall_structured(self, data: dict) -> float:
+    def _score_anomaly_recall_structured(self, data: dict, known: list[dict]) -> float:
         """Score anomaly recall from structured briefing data."""
+        if not known:
+            return 1.0
+
         found = 0
         stale_books = set()
         outlier_entries = set()
@@ -182,19 +220,18 @@ class BriefingEvaluator:
             game_id = o.get("game_id", "") if isinstance(o, dict) else getattr(o, "game_id", "")
             outlier_entries.add((book.lower(), game_id.lower()))
 
-        for anomaly in KNOWN_ANOMALIES:
+        for anomaly in known:
             book = anomaly["sportsbook"].lower()
             teams = anomaly["game_teams"]
             atype = anomaly["type"]
 
             entries = stale_books if atype == "stale" else outlier_entries
-            # Check if the sportsbook appears in any entry whose game_id contains team abbreviations
             for entry_book, entry_game in entries:
                 if entry_book == book and all(t.lower() in entry_game for t in teams):
                     found += 1
                     break
 
-        return found / len(KNOWN_ANOMALIES)
+        return found / len(known)
 
     def _score_structured_completeness(self, data: dict) -> float:
         """Score how many structured data sections are populated."""
@@ -408,5 +445,15 @@ def _team_expansions(abbr: str) -> list[str]:
         "DEN": ["nuggets", "denver nuggets", "denver"],
         "POR": ["trail blazers", "blazers", "portland trail blazers", "portland"],
         "UTA": ["jazz", "utah jazz", "utah"],
+        "BKN": ["nets", "brooklyn nets", "brooklyn"],
+        "LAC": ["clippers", "los angeles clippers", "la clippers"],
+        "ORL": ["magic", "orlando magic", "orlando"],
+        "NOP": ["pelicans", "new orleans pelicans", "new orleans"],
+        "HOU": ["rockets", "houston rockets", "houston"],
+        "WAS": ["wizards", "washington wizards", "washington"],
+        "IND": ["pacers", "indiana pacers", "indiana"],
+        "MEM": ["grizzlies", "memphis grizzlies", "memphis"],
+        "SAS": ["spurs", "san antonio spurs", "san antonio"],
+        "DET": ["pistons", "detroit pistons", "detroit"],
     }
     return mapping.get(abbr.upper(), [abbr.lower()])
