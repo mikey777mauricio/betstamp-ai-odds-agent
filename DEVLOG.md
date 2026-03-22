@@ -226,19 +226,17 @@ This is the part I'm most proud of. Building an agent is one thing. Building a s
 
 Most AI demos have no way to measure quality. "It looks about right" is not an acceptance criterion. I built a `BriefingEvaluator` that scores every briefing on five automated metrics, with the option to run evaluation after each generation via a toggle in the UI.
 
-### Five Metrics, Each Testing a Different Failure Mode
+### Four Metrics, Each Testing a Different Failure Mode
 
-**1. Completeness (15% of composite):** Does the briefing cover all required concepts — market context, anomaly discussion, arbitrage analysis, value opportunities, and sportsbook assessment?
+**1. Completeness (20% of composite):** Does the briefing cover all required concepts — market context, anomaly discussion, arbitrage analysis, value opportunities, and sportsbook assessment?
 
 Initially this was a simple keyword matcher (does "market overview" appear as a header?). It scored poorly because our structured pipeline produces a flowing executive summary, not a section-header document. I iterated to concept-based matching with synonym groups — "stale" or "outlier" or "flag" satisfies the anomaly concept. This is a better test anyway: it measures whether the narrative *discusses* the concept, not whether it uses a specific formatting convention.
 
-**2. Tool Coverage (15%):** Did the agent invoke all three required tool categories (data, detection, analysis)? This catches prompt regressions where the LLM decides to skip a step.
+**2. Tool Coverage (20%):** Did the agent invoke all three required tool categories (data, detection, analysis)? This catches prompt regressions where the LLM decides to skip a step.
 
-**3. Anomaly Recall (25%):** The heaviest-weighted metric. Five specific anomalies are seeded in the sample data (3 stale lines, 2 outliers). The evaluator checks how many appear in the output — either in structured data (preferred, exact match) or narrative text (fuzzy match with team name expansion: "LAL" → "lakers", "los angeles lakers"). This is a precision metric with known ground truth.
+**3. Structured Completeness (30%):** Are all eight sections of the structured output populated? (5 data sections + overview + narrative + quality metrics). Catches pipeline failures where a tool returns empty results that get silently swallowed.
 
-**4. Structured Completeness (20%):** Are all eight sections of the structured output populated? (5 data sections + overview + narrative + quality metrics). Catches pipeline failures where a tool returns empty results that get silently swallowed.
-
-**5. Consistency (25%):** The most sophisticated metric. Does the narrative agree with the structured data? Four sub-checks:
+**4. Consistency (30%):** The most sophisticated metric. Does the narrative agree with the structured data? Four sub-checks:
 - **Count consistency:** "3 stale lines detected" → are there actually 3 in `stale_lines[]`?
 - **Entity consistency:** Sportsbooks named in the narrative exist in the structured data
 - **Presence consistency:** Narrative doesn't say "no arbitrage found" when `arbitrage[]` has entries
@@ -246,7 +244,7 @@ Initially this was a simple keyword matcher (does "market overview" appear as a 
 
 This metric catches the most dangerous failure mode in AI systems: **confident hallucination over real data**. The narrative sounds authoritative, the numbers look plausible, but they don't match what the tools actually computed.
 
-### Why Consistency Gets 25% Weight
+### Why Consistency Gets 30% Weight
 
 In a financial context, an agent that says "no anomalies found" when the data contains three stale lines is worse than an agent that reports nothing at all. The user trusts the narrative and makes decisions on it. Consistency scoring ensures the narrative is grounded in the actual structured output — not in the LLM's creative interpretation of what "should" be there.
 
@@ -359,7 +357,7 @@ Ran 10 cycles of automated audit → fix → test. This phase was about finding 
 
 **Decision:** All odds math lives in pure Python functions. The LLM never computes a number — it calls a tool, receives JSON, and cites it.
 
-**Rationale:** LLMs are unreliable at arithmetic. "Most of the time correct" is not acceptable when someone might act on the output. 173 deterministic pytest assertions guarantee correctness independent of the model.
+**Rationale:** LLMs are unreliable at arithmetic. "Most of the time correct" is not acceptable when someone might act on the output. 168 deterministic pytest assertions guarantee correctness independent of the model.
 
 **Trade-offs:** The agent can only answer questions its tool suite covers. More tools = more capability but more surface area to test.
 
@@ -391,16 +389,16 @@ Ran 10 cycles of automated audit → fix → test. This phase was about finding 
 
 **Rationale:** An AI agent that can't be measured can't be trusted. The evaluation pipeline catches three categories of failures:
 1. **Tool failures** (tool coverage) — agent skipped a step
-2. **Data failures** (anomaly recall, structured completeness) — pipeline produced incomplete results
+2. **Data failures** (structured completeness) — pipeline produced incomplete results
 3. **Synthesis failures** (consistency) — LLM narrative contradicts computed data
 
-The composite score serves as a regression test for prompt changes — if a prompt edit drops anomaly recall from 100% to 60%, you know immediately.
+The composite score serves as a regression test for prompt changes — if a prompt edit drops consistency from 95% to 60%, you know immediately.
 
 ---
 
 ## Test Summary
 
-**173 tests passing in ~0.5s:**
+**168 tests passing in ~0.5s:**
 
 | File | Tests | What It Covers |
 |------|-------|---------------|
@@ -408,7 +406,7 @@ The composite score serves as a regression test for prompt changes — if a prom
 | `test_detection.py` | 29 | Specific seeded anomalies, false-positive absence, confidence scoring |
 | `test_analysis.py` | 20 | Vig correctness, best line detection, rankings, value opportunities |
 | `test_data_store.py` | 10 | CRUD, load/replace/reset, empty queries, optional field handling |
-| `test_eval.py` | 26 | Evaluator scoring — completeness, tool coverage, anomaly recall, consistency, composite weights |
+| `test_eval.py` | 21 | Evaluator scoring — completeness, tool coverage, structured data, consistency, composite weights |
 | `test_models.py` | 14 | Pydantic model validation, confidence/score clamping, round-trip serialization |
 | `test_edge_cases.py` | 23 | Math boundaries, thread safety, extreme odds, NaN guards, concurrent access |
 | `test_api.py` | 17* | API integration tests (all endpoints, conditional skip without SDK) |

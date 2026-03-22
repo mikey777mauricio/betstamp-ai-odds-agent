@@ -61,7 +61,7 @@ cd backend
 pytest tests/ -v
 ```
 
-173 tests covering: odds math, anomaly detection (verifies seeded anomalies), market analysis, data store, evaluator scoring, Pydantic validation, edge cases, and thread safety.
+168 tests covering: odds math, anomaly detection (verifies seeded anomalies), market analysis, data store, evaluator scoring, Pydantic validation, edge cases, and thread safety.
 
 ### Docker (alternative)
 
